@@ -74,8 +74,8 @@ export class Client {
     return this.fetch(`${this.apiRoot()}indexes/${indexId}`, {});
   }
 
-  async getAllSplits(_indexId: string): Promise<Array<SplitMetadata>> {
-    const splits: Array<SplitMetadata> = await this.fetch(`${this.apiRoot()}indexes/${indexId}/splits`, {});
+  async getAllSplits(indexId: string): Promise<Array<SplitMetadata>> {
+    const splits: Array<SplitMetadata> = [];
 
     return splits;
   }
