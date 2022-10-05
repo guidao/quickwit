@@ -228,7 +228,9 @@ impl Handler<PackagedSplitBatch> for Uploader {
         // For instance, when sending a message on a downstream actor with a saturated
         // mailbox.
         // This is meant to be fixed with ParallelActors.
+	info!("start acquire semaphore");
         let permit_guard = self.acquire_semaphore(ctx).await?;
+	info!("end acquire semaphore");
         let kill_switch = ctx.kill_switch().clone();
         let split_ids = batch.split_ids();
         if kill_switch.is_dead() {
