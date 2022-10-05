@@ -3,7 +3,7 @@ name: Build and publish Docker images
 on:
   push:
     branches:
-      - "main"
+      - "release"
     tags:
       - "v*"
 
@@ -25,9 +25,9 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: |
-            quickwit/quickwit
+            guidao02/quickwit
           tags: |
-            type=edge,branch=main
+            type=edge,branch=release
             type=edge,branch=main,suffix=-bullseye
             type=semver,pattern={{version}}
             type=semver,pattern={{version}},suffix=-bullseye

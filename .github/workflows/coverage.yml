@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - main
+      - master
       - trigger-coverage-workflow
     paths:
       - quickwit/Cargo.toml

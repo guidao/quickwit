@@ -8,7 +8,7 @@ on:
       - "!quickwit/quickwit-ui/**"
   push:
     branches:
-      - main
+      - master
       - trigger-ci-workflow
     paths:
       - "quickwit/**"
