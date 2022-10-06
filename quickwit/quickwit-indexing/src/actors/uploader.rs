@@ -42,7 +42,7 @@ use crate::models::{
 };
 use crate::split_store::IndexingSplitStore;
 
-pub const MAX_CONCURRENT_SPLIT_UPLOAD: usize = 4;
+pub const MAX_CONCURRENT_SPLIT_UPLOAD: usize = 200;
 
 /// This semaphore ensures that at most `MAX_CONCURRENT_SPLIT_UPLOAD` uploads can happen
 /// concurrently.
