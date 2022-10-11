@@ -45,7 +45,7 @@ use crate::{
 
 static MIGRATOR: Migrator = sqlx::migrate!("migrations/postgresql");
 
-const CONNECTION_POOL_MAX_SIZE: u32 = 10;
+const CONNECTION_POOL_MAX_SIZE: u32 = 30;
 
 // https://www.postgresql.org/docs/current/errcodes-appendix.html
 mod pg_error_code {
