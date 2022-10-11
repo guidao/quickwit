@@ -510,26 +510,18 @@ impl Metastore for PostgresqlMetastore {
 
 	    let mut builder = QueryBuilder::new("INSERT INTO splits (split_id, split_state, time_range_start, time_range_end, tags, split_metadata_json, index_id, delete_opstamp) ");
 	    builder.push_values(metadata, |mut b, split| {
-		b.push_bind(split.time_range.clone().map(|range|*range.start()));
-		b.push_bind(split.time_range.clone().map(|range|*range.end()));
-		b.push_bind(serde_json::to_string(&split).unwrap_or_default());
-		b.push_bind(split.tags.into_iter().collect::<String>());
+		let opstamp = split.delete_opstamp as i64;
 		b.push_bind(split.split_id.clone());
 		b.push_bind(SplitState::Staged.as_str());
-		b.push_bind(split.delete_opstamp as i64);
+		b.push_bind(split.time_range.clone().map(|range|*range.start()));
+		b.push_bind(split.time_range.clone().map(|range|*range.end()));
+		b.push_bind(split.tags.clone().into_iter().collect::<String>());
+		b.push_bind(serde_json::to_string(&split).unwrap_or_default());
+		b.push_bind(index_id);
+		b.push_bind(opstamp);
 	    });
 
 	    builder.build().execute(tx).await.map_err(|err| convert_sqlx_err(index_id, err))?;
-
-	    // metadata.into_iter().for_each(|row| {
-	    // 	time_range_start.push(row.time_range.clone().map(|range|*range.start()));
-	    // 	time_range_end.push(row.time_range.clone().map(|range|*range.end()));
-	    // 	split_metadata_json.push(serde_json::to_string(&row).unwrap_or_default());
-	    // 	tags.push(row.tags.into_iter().collect());
-	    // 	split_id.push(row.split_id.clone());
-	    // 	stages.push(SplitState::Staged.as_str());
-	    // 	delete_opstamp.push(row.delete_opstamp as i64);
-	    // });
 
 	    
             // sqlx::query(r#"
