@@ -511,11 +511,12 @@ impl Metastore for PostgresqlMetastore {
 	    let mut builder = QueryBuilder::new("INSERT INTO splits (split_id, split_state, time_range_start, time_range_end, tags, split_metadata_json, index_id, delete_opstamp) ");
 	    builder.push_values(metadata, |mut b, split| {
 		let opstamp = split.delete_opstamp as i64;
+		let tags: Vec<String> = split.tags.clone().into_iter().collect();
 		b.push_bind(split.split_id.clone());
 		b.push_bind(SplitState::Staged.as_str());
 		b.push_bind(split.time_range.clone().map(|range|*range.start()));
 		b.push_bind(split.time_range.clone().map(|range|*range.end()));
-		b.push_bind(split.tags.clone().into_iter().collect::<String>());
+		b.push_bind(tags);
 		b.push_bind(serde_json::to_string(&split).unwrap_or_default());
 		b.push_bind(index_id);
 		b.push_bind(opstamp);
