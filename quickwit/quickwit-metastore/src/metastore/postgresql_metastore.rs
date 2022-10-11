@@ -31,7 +31,7 @@ use quickwit_doc_mapper::tag_pruning::TagFilterAst;
 use quickwit_proto::metastore_api::{DeleteQuery, DeleteTask};
 use sqlx::migrate::Migrator;
 use sqlx::postgres::{PgConnectOptions, PgDatabaseError, PgPoolOptions};
-use sqlx::{ConnectOptions, Pool, Postgres, Row, Transaction};
+use sqlx::{ConnectOptions, Pool, Postgres, Row, Transaction, QueryBuilder};
 use tokio::sync::Mutex;
 use tracing::log::LevelFilter;
 use tracing::{debug, error, instrument, warn};
@@ -491,51 +491,65 @@ impl Metastore for PostgresqlMetastore {
         })
     }
 
+    #[instrument(skip_all)]
     async fn stage_splits(&self, index_id: &str, metadata: Vec<SplitMetadata>) -> MetastoreResult<()> {
 	run_with_tx!(self.connection_pool, tx, {
             // Fit the time_range to the database model.
-	    let time_range_start: Vec<_> = Vec::with_capacity(metadata.len());
-	    let time_range_end: Vec<_> = Vec::with_capacity(metadata.len());
+	    // let time_range_start: Vec<_> = Vec::with_capacity(metadata.len());
+	    // let time_range_end: Vec<_> = Vec::with_capacity(metadata.len());
 
-            // Serialize the split metadata and footer offsets to fit the database model.
-            let split_metadata_json = Vec::with_capacity(metadata.len());
+            // // Serialize the split metadata and footer offsets to fit the database model.
+            // let split_metadata_json = Vec::with_capacity(metadata.len());
 
-	    let split_metadata_json: Vec<_> = Vec::with_capacity(metadata.len());
-	    let tags: Vec<Vec<String>> = Vec::with_capacity(metadata.len());
-            // Insert a new split metadata as `Staged` state.
-	    let split_id = Vec::with_capacity(metadata.len());
-	    let stages = Vec::with_capacity(metadata.len());
-	    let delete_opstamp = Vec::with_capacity(metadata.len());
+	    // let split_metadata_json: Vec<_> = Vec::with_capacity(metadata.len());
+	    // let tags: Vec<Vec<String>> = Vec::with_capacity(metadata.len());
+            // // Insert a new split metadata as `Staged` state.
+	    // let split_id = Vec::with_capacity(metadata.len());
+	    // let stages = Vec::with_capacity(metadata.len());
+	    // let delete_opstamp = Vec::with_capacity(metadata.len());
 
-	    metadata.into_iter().for_each(|row| {
-		time_range_start.push(row.time_range.clone().map(|range|*range.start()));
-		time_range_end.push(row.time_range.clone().map(|range|*range.end()));
-		split_metadata_json.push(serde_json::to_string(&row).unwrap_or_default());
-		tags.push(row.tags.into_iter().collect());
-		split_id.push(row.split_id.clone());
-		stags.push(SplitState::Staged.as_str());
-		delete_opstamp.push(row.delete_opstamp as i64);
-	    })
+	    let mut builder = QueryBuilder::new("INSERT INTO splits (split_id, split_state, time_range_start, time_range_end, tags, split_metadata_json, index_id, delete_opstamp) ");
+	    builder.push_values(metadata, |mut b, split| {
+		b.push_bind(split.time_range.clone().map(|range|*range.start()));
+		b.push_bind(split.time_range.clone().map(|range|*range.end()));
+		b.push_bind(serde_json::to_string(&split).unwrap_or_default());
+		b.push_bind(split.tags.into_iter().collect::<String>());
+		b.push_bind(split.split_id.clone());
+		b.push_bind(SplitState::Staged.as_str());
+		b.push_bind(split.delete_opstamp as i64);
+	    });
+
+	    builder.build().execute(tx).await.map_err(|err| convert_sqlx_err(index_id, err))?;
+
+	    // metadata.into_iter().for_each(|row| {
+	    // 	time_range_start.push(row.time_range.clone().map(|range|*range.start()));
+	    // 	time_range_end.push(row.time_range.clone().map(|range|*range.end()));
+	    // 	split_metadata_json.push(serde_json::to_string(&row).unwrap_or_default());
+	    // 	tags.push(row.tags.into_iter().collect());
+	    // 	split_id.push(row.split_id.clone());
+	    // 	stages.push(SplitState::Staged.as_str());
+	    // 	delete_opstamp.push(row.delete_opstamp as i64);
+	    // });
 
 	    
-            sqlx::query(r#"
-                INSERT INTO splits
-                    (split_id, split_state, time_range_start, time_range_end, tags, split_metadata_json, index_id, delete_opstamp)
-                SELECT * FROM UNNEST ($1, $2, $3, $4, $5, $6, $7, $8)
-            "#)
-            .bind(split_id)
-            .bind(stages)
-            .bind(time_range_start)
-            .bind(time_range_end)
-            .bind(tags)
-            .bind(split_metadata_json)
-            .bind(index_id)
-            .bind(delete_opstamp)
-            .execute(tx)
-            .await
-                .map_err(|err| convert_sqlx_err(index_id, err))?;
+            // sqlx::query(r#"
+            //     INSERT INTO splits
+            //         (split_id, split_state, time_range_start, time_range_end, tags, split_metadata_json, index_id, delete_opstamp)
+            //     SELECT * FROM UNNEST ($1, $2, $3, $4, $5, $6, $7, $8)
+            // "#)
+            // .bind(split_id)
+            // .bind(stages)
+            // .bind(time_range_start)
+	    // .bind(time_range_end)
+            // .bind(tags)
+            // .bind(split_metadata_json)
+            // .bind(index_id)
+            // .bind(delete_opstamp)
+            // .execute(tx)
+            // .await
+            //     .map_err(|err| convert_sqlx_err(index_id, err))?;
 
-            debug!(index_id=?index_id, split_id=?split_id, "The split has been staged");
+//            debug!(index_id=?index_id, split_id=?split_id, "The split has been staged");
             Ok(())
         })
     }

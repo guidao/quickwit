@@ -138,7 +138,7 @@ pub trait Metastore: Send + Sync + 'static {
         split_metadata: Vec<SplitMetadata>,
     ) -> MetastoreResult<()> {
 	for split in split_metadata {
-	    self.stage_split(index_id, split_metadata)?
+	    self.stage_split(index_id, split).await?
 	}
 	Ok(())
     }
