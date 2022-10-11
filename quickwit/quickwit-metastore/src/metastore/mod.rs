@@ -131,6 +131,18 @@ pub trait Metastore: Send + Sync + 'static {
         index_id: &str,
         split_metadata: SplitMetadata,
     ) -> MetastoreResult<()>;
+    
+    async fn stage_splits(
+        &self,
+        index_id: &str,
+        split_metadata: Vec<SplitMetadata>,
+    ) -> MetastoreResult<()> {
+	for split in split_metadata {
+	    self.stage_split(index_id, split_metadata)?
+	}
+	Ok(())
+    }
+
 
     /// Publishes a list of splits.
     ///

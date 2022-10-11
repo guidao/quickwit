@@ -247,6 +247,8 @@ impl Handler<PackagedSplitBatch> for Uploader {
             async move {
                 fail_point!("uploader:intask:before");
                 let mut packaged_splits_and_metadatas = Vec::new();
+		let mut splitmetas = Vec::new();
+		
                 for split in batch.splits {
                     if batch.publish_lock.is_dead() {
                         // TODO: Remove the junk right away?
@@ -266,8 +268,11 @@ impl Handler<PackagedSplitBatch> for Uploader {
                         kill_switch.kill();
                         bail!("Failed to upload split `{}`. Killing!", split.split_id());
                     }
-                    packaged_splits_and_metadatas.push((split, upload_result.unwrap()));
+		    let m = upload_result.unwrap();
+                    packaged_splits_and_metadatas.push((split, m.clone()));
+		    splitmetas.push(m);
                 }
+		metastore.stage_splits(&index_id, splitmetas).await.unwrap();
                 let splits_update = make_publish_operation(index_id, batch.publish_lock, packaged_splits_and_metadatas, batch.checkpoint_delta_opt, batch.parent_span);
                 split_udpate_sender.send(splits_update, &ctx_clone).await?;
                 // We explicitely drop it in order to force move the permit guard into the async
@@ -328,11 +333,12 @@ async fn stage_and_upload_split(
         packaged_split.tags.clone(),
         split_streamer.footer_range.start as u64..split_streamer.footer_range.end as u64,
     );
-    let index_id = &packaged_split.split_attrs.pipeline_id.index_id.clone();
-    metastore
-        .stage_split(index_id, split_metadata.clone())
-        .instrument(tracing::info_span!("staging_split"))
-        .await?;
+    // let index_id = &packaged_split.split_attrs.pipeline_id.index_id.clone();
+    // metastore
+    //     .stage_split(index_id, split_metadata.clone())
+    //     .instrument(tracing::info_span!("staging_split"))
+    //     .await?;
+    
     counters.num_staged_splits.fetch_add(1, Ordering::SeqCst);
 
     split_store
