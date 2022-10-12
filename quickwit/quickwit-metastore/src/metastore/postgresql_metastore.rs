@@ -209,7 +209,7 @@ async fn mark_splits_for_deletion(
 }
 
 async fn list_splits_helper(
-    tx: &mut Transaction<'_, Postgres>,
+    tx: &Pool<Postgres>,
     index_id: &str,
     state_opt: Option<SplitState>,
     time_range_opt: Option<Range<i64>>,
@@ -245,16 +245,16 @@ async fn list_splits_helper(
 
     let splits = sqlx::query_as::<_, postgresql_model::Split>(&sql)
         .bind(index_id)
-        .fetch_all(&mut *tx)
+        .fetch_all(tx)
         .await?;
 
     // If no splits was returned, maybe the index itself does not exist
     // in the first place?
-    if splits.is_empty() && index_opt(&mut *tx, index_id).await?.is_none() {
-        return Err(MetastoreError::IndexDoesNotExist {
-            index_id: index_id.to_string(),
-        });
-    }
+    // if splits.is_empty() && index_opt(&mut *tx, index_id).await?.is_none() {
+    //     return Err(MetastoreError::IndexDoesNotExist {
+    //         index_id: index_id.to_string(),
+    //     });
+    // }
 
     splits.into_iter().map(|split| split.try_into()).collect()
 }
@@ -440,16 +440,14 @@ impl Metastore for PostgresqlMetastore {
     }
 
     async fn list_indexes_metadatas(&self) -> MetastoreResult<Vec<IndexMetadata>> {
-        run_with_tx!(self.connection_pool, tx, {
             let indexes: Vec<Index> = sqlx::query_as::<_, Index>("SELECT * FROM indexes")
-                .fetch_all(tx)
+                .fetch_all(&self.connection_pool)
                 .await?;
             let index_metadata: MetastoreResult<Vec<IndexMetadata>> = indexes
                 .into_iter()
                 .map(|index| index.index_metadata())
                 .collect::<MetastoreResult<_>>();
             index_metadata
-        })
     }
 
     #[instrument(skip(self),fields(index_id=index_metadata.index_id.as_str()))]
@@ -493,21 +491,6 @@ impl Metastore for PostgresqlMetastore {
 
     #[instrument(skip_all)]
     async fn stage_splits(&self, index_id: &str, metadata: Vec<SplitMetadata>) -> MetastoreResult<()> {
-	run_with_tx!(self.connection_pool, tx, {
-            // Fit the time_range to the database model.
-	    // let time_range_start: Vec<_> = Vec::with_capacity(metadata.len());
-	    // let time_range_end: Vec<_> = Vec::with_capacity(metadata.len());
-
-            // // Serialize the split metadata and footer offsets to fit the database model.
-            // let split_metadata_json = Vec::with_capacity(metadata.len());
-
-	    // let split_metadata_json: Vec<_> = Vec::with_capacity(metadata.len());
-	    // let tags: Vec<Vec<String>> = Vec::with_capacity(metadata.len());
-            // // Insert a new split metadata as `Staged` state.
-	    // let split_id = Vec::with_capacity(metadata.len());
-	    // let stages = Vec::with_capacity(metadata.len());
-	    // let delete_opstamp = Vec::with_capacity(metadata.len());
-
 	    let mut builder = QueryBuilder::new("INSERT INTO splits (split_id, split_state, time_range_start, time_range_end, tags, split_metadata_json, index_id, delete_opstamp) ");
 	    builder.push_values(metadata, |mut b, split| {
 		let opstamp = split.delete_opstamp as i64;
@@ -522,27 +505,8 @@ impl Metastore for PostgresqlMetastore {
 		b.push_bind(opstamp);
 	    });
 
+	run_with_tx!(self.connection_pool, tx, {
 	    builder.build().execute(tx).await.map_err(|err| convert_sqlx_err(index_id, err))?;
-
-	    
-            // sqlx::query(r#"
-            //     INSERT INTO splits
-            //         (split_id, split_state, time_range_start, time_range_end, tags, split_metadata_json, index_id, delete_opstamp)
-            //     SELECT * FROM UNNEST ($1, $2, $3, $4, $5, $6, $7, $8)
-            // "#)
-            // .bind(split_id)
-            // .bind(stages)
-            // .bind(time_range_start)
-	    // .bind(time_range_end)
-            // .bind(tags)
-            // .bind(split_metadata_json)
-            // .bind(index_id)
-            // .bind(delete_opstamp)
-            // .execute(tx)
-            // .await
-            //     .map_err(|err| convert_sqlx_err(index_id, err))?;
-
-//            debug!(index_id=?index_id, split_id=?split_id, "The split has been staged");
             Ok(())
         })
     }
@@ -659,16 +623,12 @@ impl Metastore for PostgresqlMetastore {
         time_range_opt: Option<Range<i64>>,
         tags: Option<TagFilterAst>,
     ) -> MetastoreResult<Vec<Split>> {
-        run_with_tx!(self.connection_pool, tx, {
-            list_splits_helper(tx, index_id, Some(state), time_range_opt, tags).await
-        })
+        list_splits_helper(&self.connection_pool, index_id, Some(state), time_range_opt, tags).await
     }
 
     #[instrument(skip(self))]
     async fn list_all_splits(&self, index_id: &str) -> MetastoreResult<Vec<Split>> {
-        run_with_tx!(self.connection_pool, tx, {
-            list_splits_helper(tx, index_id, None, None, None).await
-        })
+        list_splits_helper(&self.connection_pool, index_id, None, None, None).await
     }
 
     #[instrument(skip(self))]
