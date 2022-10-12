@@ -272,7 +272,7 @@ impl Handler<PackagedSplitBatch> for Uploader {
                     packaged_splits_and_metadatas.push((split, m.clone()));
 		    splitmetas.push(m);
                 }
-		metastore.stage_splits(&index_id, splitmetas).await.unwrap();
+		metastore.stage_splits(&index_id, splitmetas).await?;
                 let splits_update = make_publish_operation(index_id, batch.publish_lock, packaged_splits_and_metadatas, batch.checkpoint_delta_opt, batch.parent_span);
                 split_udpate_sender.send(splits_update, &ctx_clone).await?;
                 // We explicitely drop it in order to force move the permit guard into the async

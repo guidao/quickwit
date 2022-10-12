@@ -28,6 +28,7 @@ use quickwit_storage::{Storage, StorageError};
 use serde::Serialize;
 use thiserror::Error;
 use time::OffsetDateTime;
+use tokio::time::sleep;
 use tracing::error;
 
 use crate::actors::GarbageCollector;
@@ -87,65 +88,61 @@ pub async fn run_garbage_collect(
     let grace_period_timestamp =
         OffsetDateTime::now_utc().unix_timestamp() - staged_grace_period.as_secs() as i64;
 
-    let deletable_staged_splits: Vec<SplitMetadata> = metastore
-        .list_splits(index_id, SplitState::Staged, None, None)
-        .await?
-        .into_iter()
-        // TODO: Update metastore API and push this filter down.
-        .filter(|meta| meta.update_timestamp < grace_period_timestamp)
-        .map(|meta| meta.split_metadata)
-        .collect();
-    if let Some(ctx) = ctx_opt {
-        ctx.record_progress();
-    }
-
-    if dry_run {
-        let mut splits_marked_for_deletion = metastore
-            .list_splits(index_id, SplitState::MarkedForDeletion, None, None)
+    loop {
+	let deletable_staged_splits: Vec<SplitMetadata> = metastore
+            .list_splits(index_id, SplitState::Staged, None, None)
             .await?
             .into_iter()
+            .filter(|meta| meta.update_timestamp < grace_period_timestamp)
             .map(|meta| meta.split_metadata)
-            .collect::<Vec<_>>();
-        splits_marked_for_deletion.extend(deletable_staged_splits);
-
-        let candidate_entries: Vec<FileEntry> = splits_marked_for_deletion
-            .iter()
-            .map(FileEntry::from)
             .collect();
-        return Ok(candidate_entries);
+	if let Some(ctx) = ctx_opt {
+            ctx.record_progress();
+	}
+	if deletable_staged_splits.is_empty() {
+	    break
+	}
+
+	// Schedule all eligible staged splits for delete
+	let split_ids: Vec<&str> = deletable_staged_splits
+            .iter()
+            .map(|meta| meta.split_id())
+            .collect();
+	metastore
+            .mark_splits_for_deletion(index_id, &split_ids)
+            .await?;
+	sleep(Duration::from_secs(1));
     }
-
-    // Schedule all eligible staged splits for delete
-    let split_ids: Vec<&str> = deletable_staged_splits
-        .iter()
-        .map(|meta| meta.split_id())
-        .collect();
-    metastore
-        .mark_splits_for_deletion(index_id, &split_ids)
-        .await?;
-
+    
     // We wait another 2 minutes until the split is actually deleted.
-    let grace_period_deletion =
-        OffsetDateTime::now_utc().unix_timestamp() - deletion_grace_period.as_secs() as i64;
-    let splits_to_delete = metastore
-        .list_splits(index_id, SplitState::MarkedForDeletion, None, None)
-        .await?
-        .into_iter()
-        // TODO: Update metastore API and push this filter down.
-        .filter(|meta| meta.update_timestamp <= grace_period_deletion)
-        .map(|meta| meta.split_metadata)
-        .collect();
+    let mut del_files = vec![];
+    loop {
+	let grace_period_deletion =
+            OffsetDateTime::now_utc().unix_timestamp() - deletion_grace_period.as_secs() as i64;
+	let splits_to_delete: Vec<SplitMetadata> = metastore
+            .list_splits_with_limit(index_id, SplitState::MarkedForDeletion, None, None, Some(100))
+            .await?
+            .into_iter()
+            // TODO: Update metastore API and push this filter down.
+            .filter(|meta| meta.update_timestamp <= grace_period_deletion)
+            .map(|meta| meta.split_metadata)
+            .collect();
+	if splits_to_delete.is_empty() {
+	    break
+	}
 
-    let deleted_files = delete_splits_with_files(
-        index_id,
-        storage.clone(),
-        metastore.clone(),
-        splits_to_delete,
-        ctx_opt,
-    )
-    .await?;
-
-    Ok(deleted_files)
+	let deleted_files = delete_splits_with_files(
+            index_id,
+            storage.clone(),
+            metastore.clone(),
+            splits_to_delete,
+            ctx_opt,
+	).await?;
+	del_files.extend(deleted_files);
+	sleep(Duration::from_secs(1));
+    }
+    
+    Ok(del_files)
 }
 
 /// Delete a list of splits from the storage and the metastore.

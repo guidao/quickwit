@@ -18,7 +18,7 @@
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 use std::collections::{HashMap, HashSet};
-use std::fmt::Write;
+use std::fmt::{Write, write};
 use std::ops::Range;
 use std::sync::Arc;
 use std::time::Duration;
@@ -214,6 +214,7 @@ async fn list_splits_helper(
     state_opt: Option<SplitState>,
     time_range_opt: Option<Range<i64>>,
     tags_opt: Option<TagFilterAst>,
+    limit_opt: Option<i32>,
 ) -> MetastoreResult<Vec<Split>> {
     let mut sql = r#"
         SELECT *
@@ -241,6 +242,10 @@ async fn list_splits_helper(
         sql.push_str(" AND (");
         sql.push_str(&tags_filter_expression_helper(tags));
         sql.push_str(") ");
+    }
+
+    if let Some(limit) = limit_opt {
+	let _ = write!(sql, " limit {}", limit);
     }
 
     let splits = sqlx::query_as::<_, postgresql_model::Split>(&sql)
@@ -623,12 +628,24 @@ impl Metastore for PostgresqlMetastore {
         time_range_opt: Option<Range<i64>>,
         tags: Option<TagFilterAst>,
     ) -> MetastoreResult<Vec<Split>> {
-        list_splits_helper(&self.connection_pool, index_id, Some(state), time_range_opt, tags).await
+        list_splits_helper(&self.connection_pool, index_id, Some(state), time_range_opt, tags, None).await
     }
+
 
     #[instrument(skip(self))]
     async fn list_all_splits(&self, index_id: &str) -> MetastoreResult<Vec<Split>> {
-        list_splits_helper(&self.connection_pool, index_id, None, None, None).await
+        list_splits_helper(&self.connection_pool, index_id, None, None, None, None).await
+    }
+
+    async fn list_splits_with_limit(
+	&self,
+	index_id: &str,
+	state: SplitState,
+	time_range_opt: Option<Range<i64>>,
+	tags: Option<TagFilterAst>,
+	limit_opt: Option<i32>,
+    ) -> MetastoreResult<Vec<Split>> {
+	list_splits_helper(&self.connection_pool, index_id, Some(state), time_range_opt, tags, limit_opt).await
     }
 
     #[instrument(skip(self))]

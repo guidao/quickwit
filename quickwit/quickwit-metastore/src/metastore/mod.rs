@@ -179,6 +179,17 @@ pub trait Metastore: Send + Sync + 'static {
     /// Returns a list of all splits currently known to the metastore regardless of their state.
     async fn list_all_splits(&self, index_id: &str) -> MetastoreResult<Vec<Split>>;
 
+    async fn list_splits_with_limit(
+	&self,
+	index_id: &str,
+	split_state: SplitState,
+	time_range: Option<Range<i64>>,
+	tags: Option<TagFilterAst>,
+	_limit_opt: Option<i32>,
+    ) -> MetastoreResult<Vec<Split>> {
+	self.list_splits(index_id, split_state, time_range, tags).await
+    }
+
     /// Marks a list of splits for deletion.
     ///
     /// This API will change the state to [`SplitState::MarkedForDeletion`] so that it is not
