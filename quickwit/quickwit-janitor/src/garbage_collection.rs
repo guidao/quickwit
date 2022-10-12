@@ -90,7 +90,7 @@ pub async fn run_garbage_collect(
 
     loop {
 	let deletable_staged_splits: Vec<SplitMetadata> = metastore
-            .list_splits(index_id, SplitState::Staged, None, None)
+            .list_splits_with_limit(index_id, SplitState::Staged, None, None, Some(100))
             .await?
             .into_iter()
             .filter(|meta| meta.update_timestamp < grace_period_timestamp)
